@@ -13,7 +13,7 @@ class ImageCropper(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ImageCropPro - 4-Window Analysis Tool")
-        self.setGeometry(200, 0, 2000, 1080)
+        self.setGeometry(200, 0, 2000, 1200)
 
         # 图像属性
         self.noisy_image_path = None
@@ -23,6 +23,12 @@ class ImageCropper(QMainWindow):
         self.original_noisy = None
         self.original_gt = None
         self.save_folder = os.getcwd()
+        self.noisy_img_folder = os.getcwd()
+        self.GT_img_folder = os.getcwd()
+        self.noisy_img_num = 0
+        self.gt_img_num = 0
+        self.frm_idx = 0
+        self.display_frm_num = 0
 
         # 裁剪属性
         self.crop_rect = [0, 0, 1920, 1080]
@@ -107,14 +113,30 @@ class ImageCropper(QMainWindow):
         slider_layout.addWidget(QLabel("Frame:"))
 
         # 主Slider
-        self.frame_slider = QSlider(Qt.Horizontal)
-        self.frame_slider.setRange(0, 100)
+        self.frame_slider = ClickableSlider(Qt.Horizontal)
+        self.frame_slider.setRange(0, 0)
         self.frame_slider.setValue(0)
         self.frame_slider.valueChanged.connect(self.on_frame_slider_changed)
         slider_layout.addWidget(self.frame_slider)
+        self.frame_slider.setPageStep(100)
+
+        self.curr_frm_idx_edit = QLineEdit()
+        positive_int_validator = QRegExpValidator(QRegExp("[0-9]*"))
+        self.curr_frm_idx_edit.setValidator(positive_int_validator)
+        self.curr_frm_idx_edit.setText("0")
+        self.curr_frm_idx_edit.setMaximumWidth(100)
+        self.curr_frm_idx_edit.setStyleSheet("""
+                                QLineEdit {
+                                    background-color: #f8f8f8;
+                                    border: 1px solid #ccc;
+                                    padding: 5px;
+                                    border-radius: 3px;
+                                }
+                            """)
+        slider_layout.addWidget(self.curr_frm_idx_edit)
 
         # 当前帧显示
-        self.frame_label = QLabel("0/100")
+        self.frame_label = QLabel("/0")
         self.frame_label.setMinimumWidth(80)
         slider_layout.addWidget(self.frame_label)
 
@@ -136,21 +158,26 @@ class ImageCropper(QMainWindow):
         main_layout.addWidget(slider_group)  # Slider栏占1/5高度
 
     def on_frame_slider_changed(self, value):
-        """Slider值改变时的处理"""
-        self.frame_label.setText(f"{value}/100")
-        # 这里可以添加帧切换的逻辑
-        # self.update_frame_display(value)
+        # if value != self.frm_idx:
+        self.frm_idx = value
+        self.curr_frm_idx_edit.setText(str(self.frm_idx))
+        self.noisy_display.set_image_via_idx(self.frm_idx)
+        self.gt_display.set_image_via_idx(self.frm_idx)
+        self.noisy_image = self.noisy_display.original_image
+        self.gt_image = self.gt_display.original_image
+        self.update_overlay()
+
 
     def toggle_play(self):
-        """播放/暂停切换"""
-        if self.btn_play.text() == "Play":
-            self.btn_play.setText("Pause")
-            # 开始播放逻辑
-            # self.start_playback()
+        input_idx = int(self.curr_frm_idx_edit.text())
+
+        if input_idx >= self.display_frm_num:
+            self.frame_slider.setValue(self.display_frm_num - 1)
+            self.curr_frm_idx_edit.setText(str(self.display_frm_num - 1))
+
         else:
-            self.btn_play.setText("Play")
-            # 暂停播放逻辑
-            # self.stop_playback()
+            self.frame_slider.setValue(input_idx)
+
 
     def prev_frame(self):
         """上一帧"""
@@ -183,19 +210,59 @@ class ImageCropper(QMainWindow):
         # control_panel.setMaximumWidth(350)
         layout = QVBoxLayout(control_panel)
 
-        # 文件操作组
-        file_group = QGroupBox("File Operations")
-        file_layout = QVBoxLayout(file_group)
+        # Load Noisy Img folder
+        noisy_folder_group = QGroupBox("Load Noisy Img Folder")
+        noisy_folder_layout = QHBoxLayout(noisy_folder_group)
 
-        self.btn_load_noisy = QPushButton("Load Noisy Image")
+        # Noisy Img folder
+        self.noisy_folder_path_edit = QLineEdit()
+        self.noisy_folder_path_edit.setText(self.noisy_img_folder)
+        self.noisy_folder_path_edit.setReadOnly(True)  # 只读，只能通过按钮选择
+        self.noisy_folder_path_edit.setStyleSheet("""
+                        QLineEdit {
+                            background-color: #f8f8f8;
+                            border: 1px solid #ccc;
+                            padding: 5px;
+                            border-radius: 3px;
+                        }
+                    """)
+        noisy_folder_layout.addWidget(self.noisy_folder_path_edit)
+
+        # 选择文件夹按钮
+        self.btn_load_noisy = QPushButton("...")
+        self.btn_load_noisy.setToolTip("Select Save Folder")
+        self.btn_load_noisy.setMaximumWidth(30)
         self.btn_load_noisy.clicked.connect(self.load_noisy_image)
-        file_layout.addWidget(self.btn_load_noisy)
+        noisy_folder_layout.addWidget(self.btn_load_noisy)
 
-        self.btn_load_gt = QPushButton("Load GT Image")
+        layout.addWidget(noisy_folder_group)
+
+        # Load GT Img folder
+        GT_folder_group = QGroupBox("Load GT Img Folder")
+        GT_folder_layout = QHBoxLayout(GT_folder_group)
+
+        # GT Img folder
+        self.GT_folder_path_edit = QLineEdit()
+        self.GT_folder_path_edit.setText(self.GT_img_folder)
+        self.GT_folder_path_edit.setReadOnly(True)  # 只读，只能通过按钮选择
+        self.GT_folder_path_edit.setStyleSheet("""
+                                QLineEdit {
+                                    background-color: #f8f8f8;
+                                    border: 1px solid #ccc;
+                                    padding: 5px;
+                                    border-radius: 3px;
+                                }
+                            """)
+        GT_folder_layout.addWidget(self.GT_folder_path_edit)
+
+        # 选择文件夹按钮
+        self.btn_load_gt = QPushButton("...")
+        self.btn_load_gt.setToolTip("Select Save Folder")
+        self.btn_load_gt.setMaximumWidth(30)
         self.btn_load_gt.clicked.connect(self.load_gt_image)
-        file_layout.addWidget(self.btn_load_gt)
+        GT_folder_layout.addWidget(self.btn_load_gt)
 
-        layout.addWidget(file_group)
+        layout.addWidget(GT_folder_group)
 
         # 保存文件夹选择 - 水平布局
         save_group = QGroupBox("Save Folder")
@@ -320,61 +387,69 @@ class ImageCropper(QMainWindow):
             self.status_label.setText(f"Save folder set to: {self.save_folder}")
 
     def load_noisy_image(self):
-        """加载噪声图像"""
-        path, _ = QFileDialog.getOpenFileName(self, "Select Noisy Image", "",
-                                              "Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif)")
-        if path:
-            self.noisy_image_path = path
-            self.original_noisy = cv2.imread(path)
-            if self.original_noisy is not None:
-                self.noisy_image = cv2.cvtColor(self.original_noisy, cv2.COLOR_BGR2RGB)
-                if self.noisy_image.shape[0] < 1080 or self.noisy_image.shape[1] < 1920:
-                    QMessageBox.warning(self, "Warning", "The image size is smaller than 1080x1920.")
-                    self.noisy_display.show_crop_rect = False
-                else:
-                    self.noisy_display.show_crop_rect = True
-                self.initialize_images(self.noisy_display, self.noisy_image)
-                self.update_overlay()
-            else:
-                QMessageBox.critical(self, "Error", "Failed to load noisy image")
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Load Noisy Img Folder",
+            self.noisy_img_folder,
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
+
+        try:
+            self.noisy_img_folder = folder
+            self.noisy_folder_path_edit.setText(self.noisy_img_folder)
+            self.noisy_img_num = self.noisy_display.init_img_folder(self.noisy_img_folder)
+            self.status_label.setText(f"Load {self.noisy_img_num} noisy img from folder: {self.noisy_img_folder}")
+            self.noisy_image = self.noisy_display.original_image
+            self.update_overlay()
+            self.update_frm_slider()
+        except:
+            QMessageBox.critical(self, "Error", "Failed to load noisy image")
 
     def load_gt_image(self):
-        """加载真实值图像"""
-        path, _ = QFileDialog.getOpenFileName(self, "Select Ground Truth Image", "",
-                                              "Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif)")
-        if path:
-            self.gt_image_path = path
-            self.original_gt = cv2.imread(path)
-            if self.original_gt is not None:
-                self.gt_image = cv2.cvtColor(self.original_gt, cv2.COLOR_BGR2RGB)
-                if self.gt_image.shape[0] < 1080 or self.gt_image.shape[1] < 1920:
-                    QMessageBox.warning(self, "Warning", "The image size is smaller than 1080x1920.")
-                    self.gt_display.show_crop_rect = False
-                else:
-                    self.gt_display.show_crop_rect = True
-                self.initialize_images(self.gt_display, self.gt_image)
-                self.update_overlay()
-            else:
-                QMessageBox.critical(self, "Error", "Failed to load ground truth image")
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Load GT Img Folder",
+            self.GT_img_folder,
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
 
-    def initialize_images(self, window, in_img):
-        """初始化所有图像显示"""
         try:
-            # 初始化裁剪区域
-            # height, width = in_img.shape[:2]
-            # hd_width, hd_height = 1920, 1080
-            # x = (width - hd_width) // 2
-            # y = (height - hd_height) // 2
-            # self.crop_rect = [x, y, hd_width, hd_height]
+            self.GT_img_folder = folder
+            self.GT_folder_path_edit.setText(self.GT_img_folder)
+            self.gt_img_num = self.gt_display.init_img_folder(self.GT_img_folder)
+            self.status_label.setText(f"Load {self.gt_img_num} noisy img from folder: {self.GT_img_folder}")
+            self.gt_image = self.gt_display.original_image
+            self.update_overlay()
+            self.update_frm_slider()
+        except:
+            QMessageBox.critical(self, "Error", "Failed to load GT image")
 
-            # 设置图像到各个窗口
-            window.set_image(in_img)
-            window.set_crop_rect(self.crop_rect)
+    # def initialize_images(self, window, in_img):
+    #     """初始化所有图像显示"""
+    #     try:
+    #         # 初始化裁剪区域
+    #         # height, width = in_img.shape[:2]
+    #         # hd_width, hd_height = 1920, 1080
+    #         # x = (width - hd_width) // 2
+    #         # y = (height - hd_height) // 2
+    #         # self.crop_rect = [x, y, hd_width, hd_height]
+    #
+    #         # 设置图像到各个窗口
+    #         window.set_image(in_img)
+    #         window.set_crop_rect(self.crop_rect)
+    #
+    #         self.status_label.setText("Images loaded successfully!")
+    #
+    #     except Exception as e:
+    #         QMessageBox.critical(self, "Error", f"Failed to initialize images: {str(e)}")
 
-            self.status_label.setText("Images loaded successfully!")
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to initialize images: {str(e)}")
+    def update_frm_slider(self):
+        self.frm_idx = 0
+        self.display_frm_num = min(self.noisy_img_num, self.gt_img_num)
+        self.curr_frm_idx_edit.setText(f"{self.frm_idx}")
+        self.frame_label.setText(f"/{max(self.display_frm_num-1,0)}")
+        self.frame_slider.setRange(0, max(self.display_frm_num-1,0))
+        self.frame_slider.setValue(self.frm_idx)
 
     def update_overlay(self):
         """更新重叠图像显示"""
@@ -422,7 +497,6 @@ class ImageCropper(QMainWindow):
 
     def create_mapped_image(self):
         """创建映射图像（占位符）"""
-        # TODO: 替换为实际的映射算法
         x, y, w, h = self.crop_rect
         src = self.noisy_image[y:y + h, x:x + w]
         dst = self.gt_image[y:y + h, x:x + w]
@@ -499,32 +573,33 @@ class ImageCropper(QMainWindow):
         self.mapped_display.set_zoom(self.zoom_factor)
 
     def crop_images(self):
-        """裁剪所有图像"""
-        if self.noisy_image is None or self.gt_image is None:
-            return
-
-        try:
-            x, y, w, h = self.crop_rect
-
-            # 裁剪图像
-            noisy_cropped = self.noisy_image[y:y + h, x:x + w]
-            gt_cropped = self.gt_image[y:y + h, x:x + w]
-
-            # 保存图像
-            noisy_output = self.get_output_path(self.noisy_image_path, "cropped")
-            gt_output = self.get_output_path(self.gt_image_path, "cropped")
-
-            noisy_cropped_bgr = cv2.cvtColor(noisy_cropped, cv2.COLOR_RGB2BGR)
-            gt_cropped_bgr = cv2.cvtColor(gt_cropped, cv2.COLOR_RGB2BGR)
-
-            cv2.imwrite(noisy_output, noisy_cropped_bgr)
-            cv2.imwrite(gt_output, gt_cropped_bgr)
-
-            QMessageBox.information(self, "Success",
-                                    f"Images cropped successfully!\nOutput size: {w}x{h}")
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to crop images: {str(e)}")
+        # """裁剪所有图像"""
+        # if self.noisy_image is None or self.gt_image is None:
+        #     return
+        #
+        # try:
+        #     x, y, w, h = self.crop_rect
+        #
+        #     # 裁剪图像
+        #     noisy_cropped = self.noisy_image[y:y + h, x:x + w]
+        #     gt_cropped = self.gt_image[y:y + h, x:x + w]
+        #
+        #     # 保存图像
+        #     noisy_output = self.get_output_path(self.noisy_image_path, "cropped")
+        #     gt_output = self.get_output_path(self.gt_image_path, "cropped")
+        #
+        #     noisy_cropped_bgr = cv2.cvtColor(noisy_cropped, cv2.COLOR_RGB2BGR)
+        #     gt_cropped_bgr = cv2.cvtColor(gt_cropped, cv2.COLOR_RGB2BGR)
+        #
+        #     cv2.imwrite(noisy_output, noisy_cropped_bgr)
+        #     cv2.imwrite(gt_output, gt_cropped_bgr)
+        #
+        #     QMessageBox.information(self, "Success",
+        #                             f"Images cropped successfully!\nOutput size: {w}x{h}")
+        #
+        # except Exception as e:
+        #     QMessageBox.critical(self, "Error", f"Failed to crop images: {str(e)}")
+        print("frm_idx:", self.frm_idx)
 
     def get_output_path(self, input_path, suffix):
         """生成输出路径"""

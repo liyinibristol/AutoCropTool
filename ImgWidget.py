@@ -2,11 +2,12 @@ import sys
 import os
 import numpy as np
 import cv2
+from glob import glob
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
                              QWidget, QLabel, QPushButton, QFileDialog, QSlider,
                              QMessageBox, QScrollArea, QGridLayout, QGroupBox)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QRect
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QWheelEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QRect, QRegExp
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QWheelEvent, QRegExpValidator
 
 
 class Canvas(QWidget):
@@ -22,6 +23,12 @@ class Canvas(QWidget):
         super().__init__()
         self.title = title
         self.show_crop_rect = show_crop_rect
+
+        # 文件属性
+        self.img_folder = None
+        self.img_files_path = []
+        self.img_current_path = None
+        self.frm_idx = 0
 
 
         # 图像属性
@@ -43,6 +50,51 @@ class Canvas(QWidget):
         # 设置窗口属性
         self.setMinimumSize(400, 300)
         self.setMouseTracking(True)
+
+    def init_img_folder(self, folder):
+        self.img_folder = folder
+
+        self.img_files_path = glob(os.path.join(folder, "*.png"))
+        self.img_files_path += glob(os.path.join(folder, "*.jpg"))
+        self.img_files_path += glob(os.path.join(folder, "*.tiff"))
+        self.img_files_path += glob(os.path.join(folder, "*.tif"))
+        self.img_files_path.sort()
+
+        self.img_current_path = self.img_files_path[self.frm_idx]
+
+        if self.img_current_path:
+            original_image = cv2.imread(self.img_current_path)
+            if original_image is not None:
+                display_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+                if display_image.shape[0] < 1080 or display_image.shape[1] < 1920:
+                    QMessageBox.warning(self, "Warning", "The image size is smaller than 1080x1920.")
+                    self.show_crop_rect = False
+                else:
+                    self.show_crop_rect = True
+                self.set_image(display_image)
+                self.set_crop_rect(self.crop_rect)
+        else:
+            QMessageBox.critical(self, "Error", "Failed to image from: {}".format(self.img_current_path))
+
+        return len(self.img_files_path)
+
+    def set_image_via_idx(self, frm_idx):
+        self.frm_idx = frm_idx
+        self.img_current_path = self.img_files_path[self.frm_idx]
+
+        if self.img_current_path:
+            original_image = cv2.imread(self.img_current_path)
+            if original_image is not None:
+                display_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+                if display_image.shape[0] < 1080 or display_image.shape[1] < 1920:
+                    QMessageBox.warning(self, "Warning", "The image size is smaller than 1080x1920.")
+                    self.show_crop_rect = False
+                else:
+                    self.show_crop_rect = True
+                self.set_image(display_image)
+
+        else:
+            QMessageBox.critical(self, "Error", "Failed to image from: {}".format(self.img_current_path))
 
     def set_image(self, image):
         """设置图像"""
@@ -249,6 +301,35 @@ class Canvas(QWidget):
             self.drag_start = None
 
 
+class ClickableSlider(QSlider):
+    def __init__(self, orientation=Qt.Horizontal):
+        super().__init__(orientation)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            value = self._pixel_pos_to_range_value(event.pos())
+            self.setValue(value)
+            event.accept()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton:
+            value = self._pixel_pos_to_range_value(event.pos())
+            self.setValue(value)
+            event.accept()
+        super().mouseMoveEvent(event)
+
+    def _pixel_pos_to_range_value(self, pos):
+        if self.orientation() == Qt.Horizontal:
+            pos_value = pos.x()
+            slider_length = self.width()
+        else:
+            pos_value = pos.y()
+            slider_length = self.height()
+
+        value = (pos_value / slider_length) * (self.maximum() - self.minimum()) + self.minimum()
+        value = max(self.minimum(), min(self.maximum(), int(value)))
+        return value
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
