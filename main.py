@@ -8,6 +8,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
 
 from ImgWidget import *
 from map_method import *
+from datetime import datetime
+import json
 
 class ImageCropper(QMainWindow):
     def __init__(self):
@@ -24,11 +26,20 @@ class ImageCropper(QMainWindow):
         self.original_gt = None
         self.save_folder = os.getcwd()
         self.noisy_img_folder = os.getcwd()
-        self.GT_img_folder = os.getcwd()
+        self.gt_img_folder = os.getcwd()
         self.noisy_img_num = 0
         self.gt_img_num = 0
         self.frm_idx = 0
         self.display_frm_num = 0
+
+        # 剪辑视频
+        self.clip_attr = {"start_frm":0,
+                          "end_frm":0,
+                          "rect":[0, 0, 1920, 1080],
+                          "low_light_video_name": "",
+                          "low_light_video_path": "",
+                          "normal_light_video_name": "",
+                          "normal_light_video_path": "",}
 
         # 裁剪属性
         self.crop_rect = [0, 0, 1920, 1080]
@@ -237,15 +248,15 @@ class ImageCropper(QMainWindow):
 
         layout.addWidget(noisy_folder_group)
 
-        # Load GT Img folder
-        GT_folder_group = QGroupBox("Load GT Img Folder")
-        GT_folder_layout = QHBoxLayout(GT_folder_group)
+        # Load gt Img folder
+        gt_folder_group = QGroupBox("Load gt Img Folder")
+        gt_folder_layout = QHBoxLayout(gt_folder_group)
 
-        # GT Img folder
-        self.GT_folder_path_edit = QLineEdit()
-        self.GT_folder_path_edit.setText(self.GT_img_folder)
-        self.GT_folder_path_edit.setReadOnly(True)  # 只读，只能通过按钮选择
-        self.GT_folder_path_edit.setStyleSheet("""
+        # gt Img folder
+        self.gt_folder_path_edit = QLineEdit()
+        self.gt_folder_path_edit.setText(self.gt_img_folder)
+        self.gt_folder_path_edit.setReadOnly(True)  # 只读，只能通过按钮选择
+        self.gt_folder_path_edit.setStyleSheet("""
                                 QLineEdit {
                                     background-color: #f8f8f8;
                                     border: 1px solid #ccc;
@@ -253,16 +264,16 @@ class ImageCropper(QMainWindow):
                                     border-radius: 3px;
                                 }
                             """)
-        GT_folder_layout.addWidget(self.GT_folder_path_edit)
+        gt_folder_layout.addWidget(self.gt_folder_path_edit)
 
         # 选择文件夹按钮
         self.btn_load_gt = QPushButton("...")
         self.btn_load_gt.setToolTip("Select Save Folder")
         self.btn_load_gt.setMaximumWidth(30)
         self.btn_load_gt.clicked.connect(self.load_gt_image)
-        GT_folder_layout.addWidget(self.btn_load_gt)
+        gt_folder_layout.addWidget(self.btn_load_gt)
 
-        layout.addWidget(GT_folder_group)
+        layout.addWidget(gt_folder_group)
 
         # 保存文件夹选择 - 水平布局
         save_group = QGroupBox("Save Folder")
@@ -348,16 +359,20 @@ class ImageCropper(QMainWindow):
 
         # 裁剪控制组
         crop_group = QGroupBox("Crop Controls")
-        crop_layout = QVBoxLayout(crop_group)
+        crop_layout = QHBoxLayout(crop_group)
 
         # crop_info = QLabel("Drag the red HD box to select crop area")
         # crop_info.setWordWrap(True)
         # crop_layout.addWidget(crop_info)
 
-        self.btn_crop = QPushButton("Crop All Images")
-        self.btn_crop.clicked.connect(self.crop_images)
-        self.btn_crop.setEnabled(False)
-        crop_layout.addWidget(self.btn_crop)
+        self.btn_clip_start = QPushButton("Start Clipping")
+        self.btn_clip_start.clicked.connect(self.start_clip)
+        self.btn_clip_start.setEnabled(False)
+        crop_layout.addWidget(self.btn_clip_start)
+        self.btn_clip_end = QPushButton("End Clipping")
+        self.btn_clip_end.clicked.connect(self.stop_clip)
+        self.btn_clip_end.setEnabled(False)
+        crop_layout.addWidget(self.btn_clip_end)
 
         layout.addWidget(crop_group)
 
@@ -408,21 +423,21 @@ class ImageCropper(QMainWindow):
     def load_gt_image(self):
         folder = QFileDialog.getExistingDirectory(
             self,
-            "Load GT Img Folder",
-            self.GT_img_folder,
+            "Load gt Img Folder",
+            self.gt_img_folder,
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
         )
 
         try:
-            self.GT_img_folder = folder
-            self.GT_folder_path_edit.setText(self.GT_img_folder)
-            self.gt_img_num = self.gt_display.init_img_folder(self.GT_img_folder)
-            self.status_label.setText(f"Load {self.gt_img_num} noisy img from folder: {self.GT_img_folder}")
+            self.gt_img_folder = folder
+            self.gt_folder_path_edit.setText(self.gt_img_folder)
+            self.gt_img_num = self.gt_display.init_img_folder(self.gt_img_folder)
+            self.status_label.setText(f"Load {self.gt_img_num} noisy img from folder: {self.gt_img_folder}")
             self.gt_image = self.gt_display.original_image
             self.update_overlay()
             self.update_frm_slider()
         except:
-            QMessageBox.critical(self, "Error", "Failed to load GT image")
+            QMessageBox.critical(self, "Error", "Failed to load gt image")
 
     # def initialize_images(self, window, in_img):
     #     """初始化所有图像显示"""
@@ -463,7 +478,8 @@ class ImageCropper(QMainWindow):
 
         if self.noisy_display.show_crop_rect and self.gt_display.show_crop_rect is True:
             # 启用按钮
-            self.btn_crop.setEnabled(True)
+            if not self.btn_clip_end.isEnabled():
+                self.btn_clip_start.setEnabled(True)
             self.btn_apply_mapping.setEnabled(True)
 
     def create_overlay_image(self, alpha):
@@ -572,7 +588,7 @@ class ImageCropper(QMainWindow):
         self.overlay_display.set_zoom(self.zoom_factor)
         self.mapped_display.set_zoom(self.zoom_factor)
 
-    def crop_images(self):
+    def start_clip(self):
         # """裁剪所有图像"""
         # if self.noisy_image is None or self.gt_image is None:
         #     return
@@ -599,7 +615,35 @@ class ImageCropper(QMainWindow):
         #
         # except Exception as e:
         #     QMessageBox.critical(self, "Error", f"Failed to crop images: {str(e)}")
-        print("frm_idx:", self.frm_idx)
+        self.clip_attr["start_frm"] =  self.frm_idx
+        self.status_label.setText(f"Selected start frame: {self.clip_attr['start_frm']}")
+        self.btn_clip_start.setEnabled(False)
+        self.btn_clip_end.setEnabled(True)
+
+    def stop_clip(self):
+        if self.frm_idx < self.clip_attr["start_frm"]:
+            QMessageBox.critical(self, "Error", f"The end frm must be greater than the start frm. Plz select again.")
+            self.btn_clip_start.setEnabled(True)
+            self.btn_clip_end.setEnabled(False)
+            return
+
+        self.clip_attr["end_frm"] = self.frm_idx
+        self.clip_attr["rect"] = self.crop_rect
+        self.clip_attr["low_light_video_path"] = self.noisy_img_folder
+        self.clip_attr["low_light_video_name"] = os.path.basename(self.noisy_img_folder)
+        self.clip_attr["normal_light_video_path"] = self.gt_img_folder
+        self.clip_attr["normal_light_video_name"] = os.path.basename(self.gt_img_folder)
+
+        self.status_label.setText(f"Selected end frame: {self.clip_attr['end_frm']}")
+
+        save_file_name = "_".join(["clips",self.clip_attr["low_light_video_name"], datetime.now().strftime("%Y%m%d_%H%M%S")+".json"])
+        save_file_path = os.path.join(self.save_folder, save_file_name)
+        with open(save_file_path, 'w', encoding='utf-8') as f:
+            json.dump(self.clip_attr, f)
+
+        QMessageBox.information(self, "Success", f"Clip.json saved to {save_file_path}")
+        self.btn_clip_start.setEnabled(True)
+        self.btn_clip_end.setEnabled(False)
 
     def get_output_path(self, input_path, suffix):
         """生成输出路径"""
