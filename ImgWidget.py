@@ -53,6 +53,7 @@ class Canvas(QWidget):
 
     def init_img_folder(self, folder):
         self.img_folder = folder
+        self.frm_idx = 0
 
         self.img_files_path = glob(os.path.join(folder, "*.png"))
         self.img_files_path += glob(os.path.join(folder, "*.jpg"))
