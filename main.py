@@ -35,7 +35,8 @@ class ImageCropper(QMainWindow):
         # 剪辑视频
         self.clip_attr = {"start_frm":0,
                           "end_frm":0,
-                          "rect":[0, 0, 1920, 1080],
+                          "start_rect":[0, 0, 1920, 1080],
+                          "end_rect":[0, 0, 1920, 1080],
                           "low_light_video_name": "",
                           "low_light_video_path": "",
                           "normal_light_video_name": "",
@@ -616,6 +617,7 @@ class ImageCropper(QMainWindow):
         # except Exception as e:
         #     QMessageBox.critical(self, "Error", f"Failed to crop images: {str(e)}")
         self.clip_attr["start_frm"] =  self.frm_idx
+        self.clip_attr["start_rect"] = self.crop_rect
         self.status_label.setText(f"Selected start frame: {self.clip_attr['start_frm']}")
         self.btn_clip_start.setEnabled(False)
         self.btn_clip_end.setEnabled(True)
@@ -628,7 +630,7 @@ class ImageCropper(QMainWindow):
             return
 
         self.clip_attr["end_frm"] = self.frm_idx
-        self.clip_attr["rect"] = self.crop_rect
+        self.clip_attr["end_rect"] = self.crop_rect
         self.clip_attr["low_light_video_path"] = self.noisy_img_folder
         self.clip_attr["low_light_video_name"] = os.path.basename(self.noisy_img_folder)
         self.clip_attr["normal_light_video_path"] = self.gt_img_folder
